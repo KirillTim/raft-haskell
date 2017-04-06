@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Types where
 
@@ -48,7 +49,32 @@ data NodeState = NodeState
     _currentLeader      :: NodeInfo,
     _votesForMe         :: Int,
     _nextIndex          :: Map NodeName LogIndex,
-    _matchIndex         :: Map NodeName LogIndex
+    _matchIndex         :: Map NodeName LogIndex,
+    _storage            :: Map String String
   }
 
 makeLenses ''NodeState
+--messages
+data AppendEntries = AppendEntries
+  { _term    :: Term,
+    _leaderName    :: String,
+    _prevLogIndex  :: LogIndex,
+    _prevLogTerm   :: Term,
+    _entries       :: [LogEntry],
+    _leaderCommit  :: LogIndex
+  } deriving (Show, Generic, Typeable)
+
+data AppendRejected = AppendRejected { _term :: Term } deriving (Show, Generic, Typeable)
+
+data AppendSuccessfull = AppendSuccessfull deriving (Show, Generic, Typeable)
+
+data RequestVote = RequestVote
+  { _term :: Term,
+    _candidateName :: String,
+    _lastLogIndex  :: LogIndex,
+    _lastLogTerm   :: Term
+  } deriving (Show, Generic, Typeable)
+
+data VoteForCandidate = VoteForCandidate { _term :: Term } deriving (Show, Generic, Typeable)
+
+data DeclineCandidate = VoteForCandidate { _term :: Term } deriving (Show, Generic, Typeable)
