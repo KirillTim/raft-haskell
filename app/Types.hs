@@ -35,6 +35,8 @@ data LogEntry = LogEntry
     _action :: Action
   } deriving (Show, Eq, Generic, Typeable)
 
+makeLenses ''LogEntry
+
 data NodeInfo = NodeInfo
   { _name    :: String,
     _address :: String,
@@ -55,7 +57,7 @@ data NodeState = NodeState
   { _role               :: Role,
     _config             :: Config,
     _currentTerm        :: Term,
-    _votedForOnThisTerm :: Maybe NodeInfo,
+    _votedForOnThisTerm :: Maybe String,
     _eLog               :: [LogEntry],
     _commitIndex        :: LogIndex,
     _lastApplied        :: LogIndex,
