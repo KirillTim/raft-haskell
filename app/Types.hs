@@ -120,6 +120,10 @@ data Message =
   }
   | VoteForCandidate { _term :: Term }
   | DeclineCandidate { _term :: Term }
+  | StartElectionTimeout
+  | StopElectionTimeout
+  | StartHeartbeatTimout
+  | StopHeartbeatTimeout
   | ElectionTimeout
   | HeartbeatTimeout deriving (Show, Eq, Generic, Typeable)
 
@@ -141,8 +145,7 @@ data LittleState = LittleState { _next :: Int } deriving (Show)
 comp :: Int -> RWST LittleCfg [String] LittleState IO ()
 comp start = do
   r <- ask
-  let add = case start `elem` _ignore r of True -> 1
-                                           False -> start
+  let add = if start `elem` _ignore r then 1 else start
   tell ["start is " ++ show start]
   tell ["add is " ++ show add]
   liftIO $ putStrLn $ show add
