@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DuplicateRecordFields #-}
 module Handlers where
 import Types
 
@@ -7,14 +8,22 @@ import Control.Monad
 import Control.Lens
 
 
-handleAppendEntries :: Message -> NodeAction ()
-handleAppendEntries (AppendEntries term leader prevIndex prevTerm log commit) = do
+handleAppendEntries :: String -> Message -> NodeAction ()
+handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntries leaderCommit) = do
   cfg <- ask
-  state <- get
-  liftIO $ putStrLn $ "current: " ++ show (_role state)
-  when (term < _currentTerm state) $ do tell [MessageTo "foo" $ AppendRejected (myName cfg) (_currentTerm state) ]
-  --case _role state of Follower -> do
-                        
+  old <- get
+  liftIO $ putStrLn $ "current: " ++ show (old^.role)
+
+  when (term < old^.currentTerm || not (logMatch (old^.eLog) prevIndex prevTerm))
+    $ do tell [MessageTo from $ AppendRejected (myName cfg) (old^.currentTerm) ]
+
+  currentLeader .= Just from
+  eLog .= logUpdate (old^.eLog) newEntries
+  commitIndex .= updateCommitIndex (old^.eLog) (old^.commitIndex) leaderCommit
+  lastApplied .= max (old^.commitIndex) (old^.lastApplied)
+  currentTerm .= max (old^.currentTerm) term
+  role .= Follower
+  tell [MessageTo from $ AppendSuccessfull (myName cfg) (old^.currentTerm) (old^.lastApplied)]
   return ()
 
 handleElectionTimeout :: Message -> NodeAction ()
@@ -34,4 +43,18 @@ becomeCandidate = do
   votesForMe .= 0
 
 myName :: Config -> String
-myName c = _name $ _self c
+myName c = c^.self.name
+
+logMatch :: [LogEntry] -> LogIndex -> Term -> Bool
+logMatch log (LogIndex i) term
+  | length log < i = False
+  | otherwise      = t (log !! i) == term
+                     where t = _term :: LogEntry -> Term
+
+logUpdate :: [LogEntry] -> [LogEntry] -> [LogEntry]
+logUpdate oldLog newLog = undefined
+
+updateCommitIndex :: [LogEntry] -> LogIndex -> LogIndex -> LogIndex
+updateCommitIndex log current leader
+  | leader > current = min leader $ LogIndex(length log)
+  | otherwise        = current

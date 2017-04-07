@@ -20,7 +20,7 @@ import Control.Lens -- (makeLenses, (+=))
 data Role = Candidate | Follower | Leader deriving (Show, Eq)
 
 newtype Term = Term Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
-newtype LogIndex = LogIndex Int deriving (Show, Eq, Ord, Generic, Typeable)
+newtype LogIndex = LogIndex Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
 
 initTerm = Term 0
 initIndex = LogIndex (-1)
@@ -42,17 +42,21 @@ data NodeInfo = NodeInfo
     _isAlive :: Bool
   } deriving (Show, Eq)
 
+makeLenses ''NodeInfo
+
 data Config = Config
   { _self   :: NodeInfo,
     _others :: [NodeInfo]
   } deriving (Show, Eq)
+
+makeLenses ''Config
 
 data NodeState = NodeState
   { _role               :: Role,
     _config             :: Config,
     _currentTerm        :: Term,
     _votedForOnThisTerm :: Maybe NodeInfo,
-    _log                :: [LogEntry],
+    _eLog               :: [LogEntry],
     _commitIndex        :: LogIndex,
     _lastApplied        :: LogIndex,
     _currentLeader      :: Maybe String,
