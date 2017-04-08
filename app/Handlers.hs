@@ -15,7 +15,7 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
   liftIO $ putStrLn $ "current: " ++ show (old^.role)
 
   when (term < old^.currentTerm || not (logMatch (old^.eLog) prevIndex prevTerm))
-    $ do tell [MessageTo from $ AppendRejected (myName cfg) (old^.currentTerm) ]
+    $ do tell [MessageToNode from $ AppendRejected (myName cfg) (old^.currentTerm) ]
 
   currentLeader .= Just leader
   eLog .= logUpdate (old^.eLog) newEntries
@@ -23,20 +23,20 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
   lastApplied .= max (old^.commitIndex) (old^.lastApplied)
   currentTerm .= max (old^.currentTerm) term
   becomeFollower
-  tell [MessageTo from $ AppendSuccessfull (myName cfg) (old^.currentTerm) (old^.lastApplied)]
+  tell [MessageToNode from $ AppendSuccessfull (myName cfg) (old^.currentTerm) (old^.lastApplied)]
   --tell [RestartElectionTimeOut]
 
 handleRequestVote :: String -> Message -> NodeAction ()
 handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
   st <- get
   when (term < st^.currentTerm || st^.votedForOnThisTerm /= Nothing)
-    $ do tell [MessageTo from $ DeclineCandidate $ st^.currentTerm]
+    $ do tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
   when (isSecondAtLeastAsUpToDate (st^.eLog) [LogEntry lastLogIndex lastLogTerm (Remove "")])
     ( do votedForOnThisTerm .= Just name
-         tell [MessageTo from $ VoteForCandidate $ st^.currentTerm]
+         tell [MessageToNode from $ VoteForCandidate $ st^.currentTerm]
          --tell [RestartElectionTimeOut]
     )
-  tell [MessageTo from $ DeclineCandidate $ st^.currentTerm]
+  tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
 
 handleElectionTimeout :: NodeAction ()
 handleElectionTimeout = do
@@ -82,14 +82,18 @@ becomeCandidate = do
   let msgToSend = broadcast (cfg^.others) $ RequestVote (st^.currentTerm) (myName cfg) (lastIndex $ st^.eLog) (lastTerm $ st^.eLog)
   mapM_ (\m -> tell [m]) msgToSend
 
-broadcast :: [NodeInfo] -> Message -> [MessageTo]
-broadcast nodes msg = fmap (\n -> MessageTo (n^.name) msg) nodes
+broadcast :: [NodeInfo] -> Message -> [MessageToStr]
+broadcast nodes msg = fmap (\n -> MessageToNode (n^.name) msg) nodes
 
 broadcastHeartBeat :: NodeAction ()
 broadcastHeartBeat = do
-  cfg <- ask
-  st <- get
-  let msgToSend = broadcast (cfg^.others) $ AppendEntries (st^.currentTerm) (myName cfg) (lastIndex $ st^.eLog) (lastTerm $ st^.eLog) [] (st^.commitIndex)
+  li <- uses eLog lastIndex
+  lt <- uses eLog lastTerm
+  curT <- use currentTerm
+  commitI <- use commitIndex
+  name <- view (self.name)
+  receivers <- view others
+  let msgToSend = broadcast receivers $ AppendEntries curT name li lt [] commitI
   mapM_ (\m -> tell [m]) msgToSend
 
 

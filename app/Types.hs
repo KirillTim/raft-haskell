@@ -136,7 +136,6 @@ data Message =
   | DeclineCandidate { _term :: Term }
   deriving (Show, Eq, Generic, Typeable)
 
-
 data MessageFromNode =
   MessageFromNode
   { from    :: String,
@@ -161,18 +160,15 @@ data MessageTo a =
   | StopHeartbeatTimeout
   deriving (Show, Eq, Generic, Typeable)
 
-type ClientStrAddrMessageTo = MessageTo String
+type MessageToStr = MessageTo String
 type ClientStrAddrNodeState = NodeState String
 
-type NodeAction a = RWST Config [ClientStrAddrMessageTo] ClientStrAddrNodeState IO a
+type NodeAction a = RWST Config [MessageToStr] ClientStrAddrNodeState IO a
 
 data LittleCfg = LittleCfg { _ignore :: [Int]} deriving (Show)
 data LittleState = LittleState { _next :: Int } deriving (Show)
 
 data Test a = Foo {_from :: String} | Bar {_addr :: a} deriving (Show, Eq)
-
-qqq :: ClientCommand a -> a
-qqq cc = addr cc
 
 comp :: Int -> RWST LittleCfg [String] LittleState IO ()
 comp start = do
