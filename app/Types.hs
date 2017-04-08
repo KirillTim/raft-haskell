@@ -25,14 +25,15 @@ newtype LogIndex = LogIndex Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
 initTerm = Term 0
 initIndex = LogIndex (-1)
 
-data Action = Remove { _key :: String }
+data Command =
+  Remove { _key :: String }
   | Put { _key :: String, _value :: String}
   deriving (Show, Eq, Generic, Typeable)
 
 data LogEntry = LogEntry
-  { _index  :: LogIndex,
-    _term   :: Term,
-    _action :: Action
+  { _index   :: LogIndex,
+    _term    :: Term,
+    _command :: Command
   } deriving (Show, Eq, Generic, Typeable)
 
 makeLenses ''LogEntry
@@ -120,27 +121,36 @@ data Message =
   }
   | VoteForCandidate { _term :: Term }
   | DeclineCandidate { _term :: Term }
-  | StartElectionTimeout
-  | StopElectionTimeout
-  | StartHeartbeatTimout
-  | StopHeartbeatTimeout
-  | ElectionTimeout
-  | HeartbeatTimeout deriving (Show, Eq, Generic, Typeable)
+  deriving (Show, Eq, Generic, Typeable)
 
 data MessageFrom = MessageFrom
   { from    :: String,
     message :: Message
-  } deriving (Show, Eq, Generic, Typeable)
+  }
+  | ClientCommand -- TODO: fix type (any type of client address)
+  { from    :: String,
+    cmd     :: Command
+  }
+  | ElectionTimeout
+  | HeartbeatTimeout
+  deriving (Show, Eq, Generic, Typeable)
 
 data MessageTo = MessageTo
   { to      :: String,
     message :: Message
-  } deriving (Show, Eq, Generic, Typeable)
+  }
+  | StartElectionTimeout
+  | StopElectionTimeout
+  | StartHeartbeatTimout
+  | StopHeartbeatTimeout
+  deriving (Show, Eq, Generic, Typeable)
 
 type NodeAction a = RWST Config [MessageTo] NodeState IO a
 
 data LittleCfg = LittleCfg { _ignore :: [Int]} deriving (Show)
 data LittleState = LittleState { _next :: Int } deriving (Show)
+
+data Test a = Foo {_from :: String} | Bar {_addr :: a} deriving (Show, Eq)
 
 comp :: Int -> RWST LittleCfg [String] LittleState IO ()
 comp start = do

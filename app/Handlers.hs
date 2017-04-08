@@ -19,7 +19,7 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
 
   currentLeader .= Just leader
   eLog .= logUpdate (old^.eLog) newEntries
-  commitIndex .= updateCommitIndex (old^.eLog) (old^.commitIndex) leaderCommit
+  commitIndex .= newCommitIndex (old^.eLog) (old^.commitIndex) leaderCommit
   lastApplied .= max (old^.commitIndex) (old^.lastApplied)
   currentTerm .= max (old^.currentTerm) term
   becomeFollower
@@ -59,7 +59,7 @@ becomeLeader = do
   role .= Leader
   currentLeader .= Just (myName cfg)
   broadcastHeartBeat
-  tell [MessageTo "" StopElectionTimeout, MessageTo "" StartElectionTimeout]
+  tell [StopElectionTimeout, StartElectionTimeout]
 
 
 becomeFollower :: NodeAction ()
@@ -96,6 +96,7 @@ broadcastHeartBeat = do
 myName :: Config -> String
 myName c = c^.self.name
 
+-- TODO: fix it. LogIndex /= position in list
 logMatch :: [LogEntry] -> LogIndex -> Term -> Bool
 logMatch log (LogIndex i) term
   | length log < i = False
@@ -121,7 +122,7 @@ lastTerm log = (last log)^.term
 logUpdate :: [LogEntry] -> [LogEntry] -> [LogEntry]
 logUpdate oldLog newLog = undefined
 
-updateCommitIndex :: [LogEntry] -> LogIndex -> LogIndex -> LogIndex
-updateCommitIndex log current leader
+newCommitIndex :: [LogEntry] -> LogIndex -> LogIndex -> LogIndex
+newCommitIndex log current leader
   | leader > current = min leader $ LogIndex(length log)
   | otherwise        = current
