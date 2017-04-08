@@ -30,6 +30,8 @@ data Command =
   | Put { _key :: String, _value :: String}
   deriving (Show, Eq, Generic, Typeable)
 
+makeLenses ''Command
+
 data LogEntry = LogEntry
   { _index   :: LogIndex,
     _term    :: Term,
@@ -54,19 +56,28 @@ data Config = Config
 
 makeLenses ''Config
 
-data NodeState = NodeState
-  { _role               :: Role,
-    _config             :: Config,
-    _currentTerm        :: Term,
-    _votedForOnThisTerm :: Maybe String,
-    _eLog               :: [LogEntry],
-    _commitIndex        :: LogIndex,
-    _lastApplied        :: LogIndex,
-    _currentLeader      :: Maybe String,
-    _votesForMe         :: Int,
-    _nextIndex          :: M.Map String LogIndex,
-    _matchIndex         :: M.Map String LogIndex,
-    _storage            :: M.Map String String
+data ClientCommand addr = ClientCommand
+  { addr    :: addr,
+    cmd     :: Command
+  } deriving (Show, Eq, Generic, Typeable)
+
+makeLenses ''ClientCommand
+
+data NodeState caddr = NodeState
+  { _role                  :: Role,
+    _config                :: Config,
+    _currentTerm           :: Term,
+    _votedForOnThisTerm    :: Maybe String,
+    _eLog                  :: [LogEntry],
+    _commitIndex           :: LogIndex,
+    _lastApplied           :: LogIndex,
+    _currentLeader         :: Maybe String,
+    _votesForMe            :: Int,
+    _nextIndex             :: M.Map String LogIndex,
+    _matchIndex            :: M.Map String LogIndex,
+    _storage               :: M.Map String String,
+    _clientCmdQueue        :: [ClientCommand caddr],
+    _clientCmdWaitResponse :: [ClientCommand caddr]
   } deriving (Show, Eq)
 
 makeLenses ''NodeState
@@ -79,7 +90,7 @@ initTestConfig = Config
   (head $ testNodes 3)
   (tail $ testNodes 3)
 
-initNodeState :: NodeState
+initNodeState :: NodeState String
 initNodeState = NodeState
   Follower
   initTestConfig
@@ -93,16 +104,18 @@ initNodeState = NodeState
   M.empty
   M.empty
   M.empty
+  []
+  []
 
---messages
+-- RPC messages
 data Message =
   AppendEntries
-  { _term    :: Term,
-    _leaderName    :: String,
-    _prevLogIndex  :: LogIndex,
-    _prevLogTerm   :: Term,
-    _entries       :: [LogEntry],
-    _leaderCommit  :: LogIndex
+  { _term         :: Term,
+    _leaderName   :: String,
+    _prevLogIndex :: LogIndex,
+    _prevLogTerm  :: Term,
+    _entries      :: [LogEntry],
+    _leaderCommit :: LogIndex
   }
   | AppendRejected
   { _nodeName :: String,
@@ -123,21 +136,24 @@ data Message =
   | DeclineCandidate { _term :: Term }
   deriving (Show, Eq, Generic, Typeable)
 
-data MessageFrom = MessageFrom
+
+data MessageFromNode =
+  MessageFromNode
   { from    :: String,
     message :: Message
-  }
-  | ClientCommand -- TODO: fix type (any type of client address)
-  { from    :: String,
-    cmd     :: Command
   }
   | ElectionTimeout
   | HeartbeatTimeout
   deriving (Show, Eq, Generic, Typeable)
 
-data MessageTo = MessageTo
+data MessageTo a =
+  MessageToNode
   { to      :: String,
     message :: Message
+  }
+  | ClientCommandResponse
+  { cmd      :: ClientCommand a,
+    response :: String -- TODO: add command response type
   }
   | StartElectionTimeout
   | StopElectionTimeout
@@ -145,12 +161,18 @@ data MessageTo = MessageTo
   | StopHeartbeatTimeout
   deriving (Show, Eq, Generic, Typeable)
 
-type NodeAction a = RWST Config [MessageTo] NodeState IO a
+type ClientStrAddrMessageTo = MessageTo String
+type ClientStrAddrNodeState = NodeState String
+
+type NodeAction a = RWST Config [ClientStrAddrMessageTo] ClientStrAddrNodeState IO a
 
 data LittleCfg = LittleCfg { _ignore :: [Int]} deriving (Show)
 data LittleState = LittleState { _next :: Int } deriving (Show)
 
 data Test a = Foo {_from :: String} | Bar {_addr :: a} deriving (Show, Eq)
+
+qqq :: ClientCommand a -> a
+qqq cc = addr cc
 
 comp :: Int -> RWST LittleCfg [String] LittleState IO ()
 comp start = do
