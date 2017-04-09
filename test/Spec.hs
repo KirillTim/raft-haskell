@@ -1,12 +1,12 @@
 module HandlersTest where
-import Test.Tasty
-import Test.Tasty.HUnit
+import           Test.Tasty
+import           Test.Tasty.HUnit
 
-import Types
-import Handlers
-import Control.Monad.RWS.Strict
-import Data.List (elemIndex)
-import Control.Lens ((^.), (.=), (.~), (&), set)
+import           Control.Lens             (set, (&), (.=), (.~), (^.))
+import           Control.Monad.RWS.Strict
+import           Data.List                (elemIndex)
+import           Handlers
+import           Types
 
 testNodes :: Int -> [NodeInfo]
 testNodes n = fmap (\x -> NodeInfo ("node"++show x) "localhost" (9000+x) True) [1..n]

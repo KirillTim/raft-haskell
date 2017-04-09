@@ -1,13 +1,13 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE OverloadedStrings     #-}
 module Handlers where
-import Types
+import           Types
 
-import Control.Monad.RWS.Strict
-import Control.Monad
-import Control.Lens
+import           Control.Lens
+import           Control.Monad
+import           Control.Monad.RWS.Strict
 
-import qualified Data.Map as M
+import qualified Data.Map                 as M
 
 handleAppendEntries :: String -> Message -> NodeAction ()
 handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntries leaderCommit) = do
@@ -55,7 +55,7 @@ handleAppendSuccessfull from (AppendSuccessfull node term lastIndex) = do
     st <- get
     let updated = updateStorage st -- TODO: fix performance
     storage .= updated -}
-    
+
 
 handleRequestVote :: String -> Message -> NodeAction ()
 handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
@@ -138,7 +138,7 @@ becomeCandidate = do
 restartElectionTimeout :: NodeAction ()
 restartElectionTimeout = tell [StopElectionTimeout, StartElectionTimeout]
 
-broadcast :: [NodeInfo] -> Message -> [MessageToStr]
+broadcast :: [NodeInfo] -> Message -> [MessageTo]
 broadcast nodes msg = fmap (\n -> MessageToNode (n^.name) msg) nodes
 
 broadcastHeartBeat :: NodeAction ()
@@ -158,7 +158,7 @@ tryUpdateCommitIndex = undefined
 buildAppendEntries :: String -> NodeAction Message
 buildAppendEntries = undefined
 
-updateStorage :: NodeState String -> M.Map String String
+updateStorage :: NodeState -> M.Map String String
 updateStorage = undefined
 
 myName :: Config -> String

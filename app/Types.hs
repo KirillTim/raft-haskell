@@ -1,26 +1,33 @@
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE DuplicateRecordFields      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE NamedFieldPuns             #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE TemplateHaskell            #-}
 module Types where
 
-import qualified Data.Map as M
+import qualified Data.Map                 as M
 
-import Data.Binary (Binary)
-import Data.Typeable (Typeable)
-import GHC.Generics (Generic)
+import           Data.Aeson
 
-import Control.Monad.RWS.Strict --(RWS, MonadReader, MonadWriter, MonadState,
+import           Data.Binary              (Binary)
+import           Data.Typeable            (Typeable)
+import           GHC.Generics             (Generic)
+
+import           Control.Monad.RWS.Strict
                                 -- ask, tell, get, put, execRWS, liftIO)
 
-import Control.Lens -- (makeLenses, (+=))
+import           Control.Lens
 
 data Role = Candidate | Follower | Leader deriving (Show, Eq)
 
-newtype Term = Term Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
+newtype Term = Term Int deriving (Show, Eq, Ord, Num,  Generic, Typeable)
+instance ToJSON Term
+instance FromJSON Term
+
 newtype LogIndex = LogIndex Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
+instance ToJSON LogIndex
+instance FromJSON LogIndex
 
 initTerm = Term 0
 initIndex = LogIndex (-1)
@@ -30,6 +37,8 @@ data Command =
   | Put { _key :: String, _value :: String}
   deriving (Show, Eq, Generic, Typeable)
 
+instance ToJSON Command
+instance FromJSON Command
 makeLenses ''Command
 
 data LogEntry = LogEntry
@@ -38,6 +47,8 @@ data LogEntry = LogEntry
     _command :: Command
   } deriving (Show, Eq, Generic, Typeable)
 
+instance ToJSON LogEntry
+instance FromJSON LogEntry
 makeLenses ''LogEntry
 
 data NodeInfo = NodeInfo
@@ -56,14 +67,16 @@ data Config = Config
 
 makeLenses ''Config
 
-data ClientCommand addr = ClientCommand
-  { addr    :: addr,
-    cmd     :: Command
+data ClientCommand = ClientCommand
+  { addr :: String,
+    cmd  :: Command
   } deriving (Show, Eq, Generic, Typeable)
 
+instance ToJSON ClientCommand
+instance FromJSON ClientCommand
 makeLenses ''ClientCommand
 
-data NodeState caddr = NodeState
+data NodeState = NodeState
   { _role                  :: Role,
     _currentTerm           :: Term,
     _votedForOnThisTerm    :: Maybe String,
@@ -75,13 +88,13 @@ data NodeState caddr = NodeState
     _nextIndex             :: M.Map String LogIndex,
     _matchIndex            :: M.Map String LogIndex,
     _storage               :: M.Map String String,
-    _clientCmdQueue        :: [ClientCommand caddr],
-    _clientCmdWaitResponse :: [ClientCommand caddr]
+    _clientCmdQueue        :: [ClientCommand],
+    _clientCmdWaitResponse :: [ClientCommand]
   } deriving (Show, Eq)
 
 makeLenses ''NodeState
 
-initNodeState :: NodeState String
+initNodeState :: NodeState
 initNodeState = NodeState
   Follower  -- role
   initTerm  -- current term
@@ -117,7 +130,7 @@ data Message =
     _lastIndex :: LogIndex
   }
   | RequestVote
-  { _term :: Term,
+  { _term          :: Term,
     _candidateName :: String,
     _lastLogIndex  :: LogIndex,
     _lastLogTerm   :: Term
@@ -126,7 +139,10 @@ data Message =
   | DeclineCandidate { _term :: Term }
   deriving (Show, Eq, Generic, Typeable)
 
-data MessageFromNode =
+instance ToJSON Message
+instance FromJSON Message
+
+data MessageFrom =
   MessageFromNode
   { from    :: String,
     message :: Message
@@ -135,13 +151,16 @@ data MessageFromNode =
   | HeartbeatTimeout
   deriving (Show, Eq, Generic, Typeable)
 
-data MessageTo a =
+instance ToJSON MessageFrom
+instance FromJSON MessageFrom
+
+data MessageTo =
   MessageToNode
   { to      :: String,
     message :: Message
   }
   | ClientCommandResponse
-  { cmd      :: ClientCommand a,
+  { cmd      :: ClientCommand,
     response :: String -- TODO: add command response type
   }
   | StartElectionTimeout
@@ -150,7 +169,7 @@ data MessageTo a =
   | StopHeartbeatTimeout
   deriving (Show, Eq, Generic, Typeable)
 
-type MessageToStr = MessageTo String
-type ClientStrAddrNodeState = NodeState String
+instance ToJSON MessageTo
+instance FromJSON MessageTo
 
-type NodeAction a = RWST Config [MessageToStr] ClientStrAddrNodeState IO a
+type NodeAction a = RWST Config [MessageTo] NodeState IO a
