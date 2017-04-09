@@ -59,15 +59,16 @@ handleAppendSuccessfull from (AppendSuccessfull node term lastIndex) = do
 
 handleRequestVote :: String -> Message -> NodeAction ()
 handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
-  st <- get
-  when (term < st^.currentTerm || st^.votedForOnThisTerm /= Nothing)
-    $ do tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
-  when (isSecondAtLeastAsUpToDate (st^.eLog) [LogEntry lastLogIndex lastLogTerm (Remove "")])
-    ( do votedForOnThisTerm .= Just name
-         tell [MessageToNode from $ VoteForCandidate $ st^.currentTerm]
-         tell [StopElectionTimeout, StartElectionTimeout] -- not here ?
-    )
-  tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
+  ct <- use currentTerm
+  vote <- use votedForOnThisTerm
+  log <- use eLog
+  if (term < ct || vote /= Nothing) then do
+    tell [MessageToNode from $ DeclineCandidate ct]
+  else do
+    when (isSecondAtLeastAsUpToDate log [LogEntry lastLogIndex lastLogTerm (Remove "")]) $ do
+      votedForOnThisTerm .= Just name
+      tell [MessageToNode from $ VoteForCandidate $ ct]
+      restartElectionTimeout
 
 handleVoteForCandidate :: Message -> NodeAction ()
 handleVoteForCandidate (VoteForCandidate term) = do
