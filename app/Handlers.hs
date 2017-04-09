@@ -69,15 +69,24 @@ handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
     )
   tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
 
-handleVoteForCandidate :: String -> Message -> NodeAction ()
-handleVoteForCandidate _ (VoteForCandidate term) = do
+handleVoteForCandidate :: Message -> NodeAction ()
+handleVoteForCandidate (VoteForCandidate term) = do
   ct <- use currentTerm
-  when (term == ct) $ do
+  r <- use role
+  when (r == Candidate && term == ct) $ do
     votesForMe += 1
     have <- use votesForMe
-    nsz <- views others length
-    let need = nsz `div` 2 + 1
-    when (have >= need) $ do becomeLeader
+    need <- views others $ (flip div 2) . length
+    when (have > need) $ do becomeLeader
+
+handleDeclineCandidate :: Message -> NodeAction ()
+handleDeclineCandidate (DeclineCandidate term) = do
+  ct <- use currentTerm
+  r <- use role
+  when (r == Candidate) $ do
+    when (ct < term) $ do
+      currentTerm .= term
+      becomeFollower
 
 handleElectionTimeout :: NodeAction ()
 handleElectionTimeout = becomeCandidate
@@ -97,7 +106,7 @@ becomeLeader = do -- TODO: what to do with clientCmdQueue ?
   role .= Leader
   currentLeader .= Just name
   ni <- uses eLog $ (+1) . lastIndex
-  otherNames <- views others (fmap _name) -- TODO: rewrite that shit
+  otherNames <- views others (fmap _name) -- TODO: rewrite this shit
   st <- get
   mapM_ (\n -> nextIndex .= M.insert n ni (st^.nextIndex)) otherNames
   broadcastHeartBeat
