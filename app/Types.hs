@@ -170,7 +170,7 @@ data LittleState = LittleState { _next :: Int } deriving (Show)
 
 data Test a = Foo {_from :: String} | Bar {_addr :: a} deriving (Show, Eq)
 
-comp :: Int -> RWST LittleCfg [String] LittleState IO ()
+comp :: Int -> RWST LittleCfg [String] LittleState IO Bool
 comp start = do
   r <- ask
   let add = if start `elem` _ignore r then 1 else start
@@ -181,6 +181,7 @@ comp start = do
   let new = prev { _next = _next prev + add}
   put new
   tell ["new is " ++ show new]
+  return False
   
 {-comp :: Int -> RWST [Int] [Int] Int IO ()
 comp start = do

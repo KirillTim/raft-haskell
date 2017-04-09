@@ -7,6 +7,7 @@ import Control.Monad.RWS.Strict
 import Control.Monad
 import Control.Lens
 
+import qualified Data.Map as M
 
 handleAppendEntries :: String -> Message -> NodeAction ()
 handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntries leaderCommit) = do
@@ -26,6 +27,36 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
   tell [MessageToNode from $ AppendSuccessfull (myName cfg) (old^.currentTerm) (old^.lastApplied)]
   --tell [RestartElectionTimeOut]
 
+handleAppendRejected :: String -> Message -> NodeAction ()
+handleAppendRejected from (AppendRejected name term) = do
+  currentT <- use currentTerm
+  if currentT < term then do
+    currentTerm .= term
+    becomeFollower
+  else do
+    ni <- use nextIndex
+    let Just ind = M.lookup name ni
+    nextIndex .= M.insert name (ind - 1) ni
+    msg <- buildAppendEntries name
+    tell [MessageToNode name msg]
+
+{-handleAppendSuccessfull :: String -> Message -> NodeAction ()
+handleAppendSuccessfull from (AppendSuccessfull node term lastIndex) = do
+  mi <- use matchIndex
+  ni <- use nextIndex
+  matchIndex .= M.insert node lastIndex mi
+  nextIndex .= M.insert node (lastIndex + 1) ni
+  tryUpdateCommitIndex
+  ci <- use commitIndex
+  la <- use lastApplied
+  if (ci > la) then do
+    liftIO . putStrLn "update applied index"
+    lastApplied .= commitIndex
+    st <- get
+    let updated = updateStorage st -- TODO: fix performance
+    storage .= updated -}
+    
+
 handleRequestVote :: String -> Message -> NodeAction ()
 handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
   st <- get
@@ -34,15 +65,22 @@ handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
   when (isSecondAtLeastAsUpToDate (st^.eLog) [LogEntry lastLogIndex lastLogTerm (Remove "")])
     ( do votedForOnThisTerm .= Just name
          tell [MessageToNode from $ VoteForCandidate $ st^.currentTerm]
-         --tell [RestartElectionTimeOut]
+         tell [StopElectionTimeout, StartElectionTimeout] -- not here ?
     )
   tell [MessageToNode from $ DeclineCandidate $ st^.currentTerm]
 
+handleVoteForCandidate :: String -> Message -> NodeAction ()
+handleVoteForCandidate _ (VoteForCandidate term) = do
+  ct <- use currentTerm
+  when (term == ct) $ do
+    votesForMe += 1
+    have <- use votesForMe
+    nsz <- views others length
+    let need = nsz `div` 2 + 1
+    when (have >= need) $ do becomeLeader
+
 handleElectionTimeout :: NodeAction ()
-handleElectionTimeout = do
-  st <- get
-  when (st^.role == Candidate) $ do becomeCandidate
-  -- ignore otherwise
+handleElectionTimeout = becomeCandidate
 
 handleHeartBeatTimeout :: NodeAction ()
 handleHeartBeatTimeout = do
@@ -51,23 +89,27 @@ handleHeartBeatTimeout = do
   -- ignore otherwise
 
 becomeLeader :: NodeAction ()
-becomeLeader = do
-  cfg <- ask
-  st <- get
-  liftIO $ putStrLn (show (st^.role) ++ "-> Leader")
+becomeLeader = do -- TODO: what to do with clientCmdQueue ?
+  name <- view (self.name)
+  old <- use role
+  liftIO . putStrLn $ show old ++ "-> Leader"
   votedForOnThisTerm .= Nothing
   role .= Leader
-  currentLeader .= Just (myName cfg)
+  currentLeader .= Just name
+  ni <- uses eLog $ (+1) . lastIndex
+  otherNames <- views others (fmap _name) -- TODO: rewrite that shit
+  st <- get
+  mapM_ (\n -> nextIndex .= M.insert n ni (st^.nextIndex)) otherNames
   broadcastHeartBeat
-  tell [StopElectionTimeout, StartElectionTimeout]
-
+  tell [StopElectionTimeout, StartHeartbeatTimout]
 
 becomeFollower :: NodeAction ()
-becomeFollower = do
-  st <- get
-  liftIO $ putStrLn (show (st^.role) ++ "-> Follower")
+becomeFollower = do -- TODO: resend clientCmdQueue ?
+  old <- use role
+  liftIO . putStrLn $ show old ++ "-> Follower"
   votedForOnThisTerm .= Nothing
   role .= Follower
+  restartElectionTimeout
 
 becomeCandidate :: NodeAction ()
 becomeCandidate = do
@@ -81,6 +123,10 @@ becomeCandidate = do
   votesForMe .= 1
   let msgToSend = broadcast (cfg^.others) $ RequestVote (st^.currentTerm) (myName cfg) (lastIndex $ st^.eLog) (lastTerm $ st^.eLog)
   mapM_ (\m -> tell [m]) msgToSend
+  restartElectionTimeout
+
+restartElectionTimeout :: NodeAction ()
+restartElectionTimeout = tell [StopElectionTimeout, StartElectionTimeout]
 
 broadcast :: [NodeInfo] -> Message -> [MessageToStr]
 broadcast nodes msg = fmap (\n -> MessageToNode (n^.name) msg) nodes
@@ -93,14 +139,22 @@ broadcastHeartBeat = do
   commitI <- use commitIndex
   name <- view (self.name)
   receivers <- view others
-  let msgToSend = broadcast receivers $ AppendEntries curT name li lt [] commitI
-  mapM_ (\m -> tell [m]) msgToSend
+  let msgs = broadcast receivers $ AppendEntries curT name li lt [] commitI
+  mapM_ (\m -> tell [m]) msgs
 
+tryUpdateCommitIndex :: NodeAction ()
+tryUpdateCommitIndex = undefined
+
+buildAppendEntries :: String -> NodeAction Message
+buildAppendEntries = undefined
+
+updateStorage :: NodeState String -> M.Map String String
+updateStorage = undefined
 
 myName :: Config -> String
 myName c = c^.self.name
 
--- TODO: fix it. LogIndex /= position in list
+-- TODO: ??? fix it. LogIndex /= position in list
 logMatch :: [LogEntry] -> LogIndex -> Term -> Bool
 logMatch log (LogIndex i) term
   | length log < i = False
