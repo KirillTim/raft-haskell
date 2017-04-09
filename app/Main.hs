@@ -1,6 +1,8 @@
 module Main where
 
-import Lib
-
+import Handlers
+import Types
+ 
 main :: IO ()
-main = someFunc
+main = print "hello"
+

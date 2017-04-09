@@ -2,7 +2,5 @@ flags: {}
 extra-package-dbs: []
 packages:
 - '.'
-extra-deps:
-- concurrent-extra-0.7.0.10
-- derive-2.6.2
+extra-deps: []
 resolver: lts-8.8
