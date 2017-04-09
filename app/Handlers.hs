@@ -101,7 +101,7 @@ becomeLeader :: NodeAction ()
 becomeLeader = do -- TODO: what to do with clientCmdQueue ?
   name <- view (self.name)
   old <- use role
-  liftIO . putStrLn $ show old ++ "-> Leader"
+  liftIO . putStrLn $ show old ++ " -> Leader"
   votedForOnThisTerm .= Nothing
   role .= Leader
   currentLeader .= Just name
@@ -115,7 +115,7 @@ becomeLeader = do -- TODO: what to do with clientCmdQueue ?
 becomeFollower :: NodeAction ()
 becomeFollower = do -- TODO: resend clientCmdQueue ?
   old <- use role
-  liftIO . putStrLn $ show old ++ "-> Follower"
+  liftIO . putStrLn $ show old ++ " -> Follower"
   votedForOnThisTerm .= Nothing
   role .= Follower
   restartElectionTimeout
@@ -124,7 +124,7 @@ becomeCandidate :: NodeAction ()
 becomeCandidate = do
   cfg <- ask
   st <- get
-  liftIO $ putStrLn (show (st^.role) ++ "-> Candidate")
+  liftIO $ putStrLn (show (st^.role) ++ " -> Candidate")
   currentTerm += 1
   role .= Candidate
   votedForOnThisTerm .= Just (myName cfg)

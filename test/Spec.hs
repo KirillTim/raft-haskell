@@ -1,2 +1,3 @@
+import qualified HandlersTest as HT
 main :: IO ()
-main = putStrLn "Test suite not yet implemented"
+main = HT.main

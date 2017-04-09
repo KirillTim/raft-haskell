@@ -65,7 +65,6 @@ makeLenses ''ClientCommand
 
 data NodeState caddr = NodeState
   { _role                  :: Role,
-    _config                :: Config,
     _currentTerm           :: Term,
     _votedForOnThisTerm    :: Maybe String,
     _eLog                  :: [LogEntry],
@@ -82,30 +81,21 @@ data NodeState caddr = NodeState
 
 makeLenses ''NodeState
 
-testNodes :: Int -> [NodeInfo]
-testNodes n = fmap (\x -> NodeInfo ("node"++show x) "localhost" (9000+x) True) [1..n]
-
-initTestConfig :: Config
-initTestConfig = Config
-  (head $ testNodes 3)
-  (tail $ testNodes 3)
-
 initNodeState :: NodeState String
 initNodeState = NodeState
-  Follower
-  initTestConfig
-  initTerm
-  Nothing
-  []
-  initIndex
-  initIndex
-  Nothing
-  0
-  M.empty
-  M.empty
-  M.empty
-  []
-  []
+  Follower  -- role
+  initTerm  -- current term
+  Nothing   -- voted for on this term
+  []        -- log entries
+  initIndex -- commit index
+  initIndex -- last applied index
+  Nothing   -- current known leader
+  0         -- votes for me
+  M.empty   -- next index of log for followers
+  M.empty   -- matched index of log for followers
+  M.empty   -- storage
+  []        -- client commands
+  []        -- client commands, waited for response
 
 -- RPC messages
 data Message =
@@ -164,33 +154,3 @@ type MessageToStr = MessageTo String
 type ClientStrAddrNodeState = NodeState String
 
 type NodeAction a = RWST Config [MessageToStr] ClientStrAddrNodeState IO a
-
-data LittleCfg = LittleCfg { _ignore :: [Int]} deriving (Show)
-data LittleState = LittleState { _next :: Int } deriving (Show)
-
-data Test a = Foo {_from :: String} | Bar {_addr :: a} deriving (Show, Eq)
-
-comp :: Int -> RWST LittleCfg [String] LittleState IO Bool
-comp start = do
-  r <- ask
-  let add = if start `elem` _ignore r then 1 else start
-  tell ["start is " ++ show start]
-  tell ["add is " ++ show add]
-  liftIO $ putStrLn $ show add
-  prev <- get
-  let new = prev { _next = _next prev + add}
-  put new
-  tell ["new is " ++ show new]
-  return False
-  
-{-comp :: Int -> RWST [Int] [Int] Int IO ()
-comp start = do
-  r <- ask
-  let add = case start `elem` r of True  -> 1
-                                   False -> start
-  liftIO $ putStrLn $ show add
-  prev <- get
-  let new = prev + add
-  put new
-  tell [start]
-  if new < 100 then runRWST (comp new) r prev else return () -}
