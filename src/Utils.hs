@@ -1,7 +1,7 @@
 module Utils where
-import qualified Data.Map as M
+import qualified Data.Map as M (Map, delete, empty, insert)
 
-import Types
+import           Types    (Command (..), LogEntry (..), initIndex, initTerm)
 
 buildStorage :: [LogEntry] -> M.Map String String
 buildStorage entries = foldl apply M.empty $ fmap _command entries
@@ -10,9 +10,13 @@ buildStorage entries = foldl apply M.empty $ fmap _command entries
                                Remove k -> M.delete k s
 
 buildTestLog :: [Command] -> [LogEntry]
-buildTestLog cmds = fmap (LogEntry initIndex initTerm) cmds
+buildTestLog = fmap (LogEntry initIndex initTerm)
 
+testLog :: [LogEntry]
 testLog = buildTestLog [Put "k1" "v1", Put "k1" "v2", Remove "k2", Put "k2" "v2"]
+
+testLog2 :: [LogEntry]
 testLog2 = testLog ++ buildTestLog [Remove "k1"]
 
+testLog3 :: [LogEntry]
 testLog3 = []

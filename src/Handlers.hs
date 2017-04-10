@@ -1,13 +1,23 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE OverloadedStrings     #-}
 module Handlers where
-import           Types
+import           Types                    (Command (..), Config (..),
+                                           LogEntry (..), LogIndex (..),
+                                           Message (..), MessageTo (..),
+                                           NodeAction, NodeInfo (..),
+                                           NodeState (..), Role (..), Term (..),
+                                           commitIndex, currentLeader,
+                                           currentTerm, eLog, initIndex,
+                                           initTerm, lastApplied, name,
+                                           nextIndex, others, role, self, term,
+                                           votedForOnThisTerm, votesForMe)
 
-import           Control.Lens
-import           Control.Monad
-import           Control.Monad.RWS.Strict
+import           Control.Lens             (use, uses, view, views, (+=), (.=),
+                                           (^.))
+import           Control.Monad            (when)
+import           Control.Monad.RWS.Strict (ask, get, liftIO, tell)
 
-import qualified Data.Map                 as M
+import qualified Data.Map                 as M (Map, insert, lookup)
 
 handleAppendEntries :: String -> Message -> NodeAction ()
 handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntries leaderCommit) = do
@@ -16,7 +26,7 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
   liftIO $ putStrLn $ "current: " ++ show (old^.role)
 
   when (term < old^.currentTerm || not (logMatch (old^.eLog) prevIndex prevTerm))
-    $ do tell [MessageToNode from $ AppendRejected (myName cfg) (old^.currentTerm) ]
+    $ tell [MessageToNode from $ AppendRejected (myName cfg) (old^.currentTerm)]
 
   currentLeader .= Just leader
   eLog .= logUpdate (old^.eLog) newEntries
@@ -28,7 +38,7 @@ handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntrie
   --tell [RestartElectionTimeOut]
 
 handleAppendRejected :: String -> Message -> NodeAction ()
-handleAppendRejected from (AppendRejected name term) = do
+handleAppendRejected _ (AppendRejected name term) = do
   currentT <- use currentTerm
   if currentT < term then do
     currentTerm .= term
@@ -166,9 +176,9 @@ myName c = c^.self.name
 
 -- TODO: ??? fix it. LogIndex /= position in list
 logMatch :: [LogEntry] -> LogIndex -> Term -> Bool
-logMatch log (LogIndex i) term
-  | length log < i = False
-  | otherwise      = t (log !! i) == term
+logMatch entries (LogIndex i) term
+  | length entries < i = False
+  | otherwise      = t (entries !! i) == term
                      where t = _term :: LogEntry -> Term
 
 isSecondAtLeastAsUpToDate :: [LogEntry] -> [LogEntry] -> Bool
@@ -179,18 +189,18 @@ isSecondAtLeastAsUpToDate first second
 
 lastIndex :: [LogEntry] -> LogIndex
 lastIndex []  = initIndex
-lastIndex log = i (last log)
+lastIndex entries = i (last entries)
                 where i = _index :: LogEntry -> LogIndex
 
 lastTerm :: [LogEntry] -> Term
-lastTerm []  = initTerm
-lastTerm log = (last log)^.term
+lastTerm []      = initTerm
+lastTerm entries = (last entries)^.term
 
 
 logUpdate :: [LogEntry] -> [LogEntry] -> [LogEntry]
 logUpdate oldLog newLog = undefined
 
 newCommitIndex :: [LogEntry] -> LogIndex -> LogIndex -> LogIndex
-newCommitIndex log current leader
-  | leader > current = min leader $ LogIndex(length log)
+newCommitIndex entries current leader
+  | leader > current = min leader $ LogIndex(length entries)
   | otherwise        = current

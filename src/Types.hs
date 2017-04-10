@@ -6,18 +6,15 @@
 {-# LANGUAGE TemplateHaskell            #-}
 module Types where
 
-import qualified Data.Map                 as M
-
-import           Data.Aeson
-
-import           Data.Binary              (Binary)
+import           Control.Lens             (makeLenses)
+import           Control.Monad.RWS.Strict (RWST (..))
 import           Data.Typeable            (Typeable)
 import           GHC.Generics             (Generic)
 
-import           Control.Monad.RWS.Strict
-                                -- ask, tell, get, put, execRWS, liftIO)
+import qualified Data.Map                 as M (Map, empty)
 
-import           Control.Lens
+import           Data.Aeson               (FromJSON, ToJSON)
+
 
 data Role = Candidate | Follower | Leader deriving (Show, Eq)
 
@@ -29,7 +26,9 @@ newtype LogIndex = LogIndex Int deriving (Show, Eq, Ord, Num, Generic, Typeable)
 instance ToJSON LogIndex
 instance FromJSON LogIndex
 
+initTerm :: Term
 initTerm = Term 0
+initIndex :: LogIndex
 initIndex = LogIndex (-1)
 
 data Command =

@@ -8,12 +8,13 @@ module NetworkUtils
 
 import           Control.Concurrent (ThreadId, forkIO, killThread, threadDelay)
 import           Control.Exception  (Exception, throw)
+import           Control.Lens       ((^.))
 import           Data.IORef         (IORef, readIORef, writeIORef)
 import           System.IO          (readFile)
 
 import qualified Data.Text          as T (pack, splitOn, unpack)
 
-import           Types
+import           Types              (Config(..), NodeInfo(..), name)
 
 stopTimer :: IORef (Maybe ThreadId) -> IO ()
 stopTimer ref = do
@@ -42,11 +43,14 @@ readConfig :: String -> String -> IO Config
 readConfig file nodeName = do
   content <- readFile file
   let info = map parseNodeInfo $ lines content
-  let self = head $ filter (\n -> _name n == nodeName) info
-  let others = filter (\n -> _name n /= nodeName) info
+  let s = filter (\n -> n^.name == nodeName) info
+  let self = if null s
+             then error $ "can't find addr for " ++ nodeName ++ "in " ++ file
+             else head s
+  let others = filter (\n -> n^.name /= nodeName) info
   return $ Config self others
 
 parseNodeInfo :: String -> NodeInfo
-parseNodeInfo str = NodeInfo name addr port True
-               where [name, adp] = words str
+parseNodeInfo str = NodeInfo nname addr port True
+               where [nname, adp] = words str
                      [addr, port] = map T.unpack $ T.splitOn ":" $ T.pack adp
