@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Handlers, Types, Utils
+  exposed-modules:     Handlers, Types, Utils, NetworkUtils
   build-depends:       base >= 4.7 && < 5
                      , binary >= 0.8.3.0
                      , containers >= 0.5.7.1

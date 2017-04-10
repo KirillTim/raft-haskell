@@ -18,13 +18,12 @@ import           Data.ByteString.Char8        as BS (pack)
 import           Data.ByteString.Lazy.Char8   as LBS (unpack)
 import           Data.IORef
 import qualified Data.Map                     as M
-import qualified Data.Text                    as T
 import           System.Environment
-import           System.IO
 
 
+import           Handlers
+import           NetworkUtils
 import           Types
-import Handlers
 
 type NodeConnsTVar = TVar (M.Map String Connection)
 type ClientConnsTVar = TVar (M.Map ConnectionId Connection)
@@ -125,26 +124,6 @@ sendHeartBeatTimerMsg = sendTimerMsg HeartbeatTimeout
 sendTimerMsg :: MessageFrom -> TChan MessageFrom -> IO ()
 sendTimerMsg msg chan = atomically $ writeTChan chan msg
 
-stopTimer :: IORef (Maybe ThreadId) -> IO ()
-stopTimer ref = do
-  tid <- readIORef ref
-  case tid of Just id -> killThread id
-              Nothing -> return ()
-  --fmap killThread tid  WTF?!!
-
-restartTimer :: Int -> IORef (Maybe ThreadId) -> IO () -> IO ThreadId
-restartTimer delay ref action = do
-  stopTimer ref
-  new <- startTimer delay action
-  writeIORef ref $ Just new
-  return new
-
-startTimer :: Int -> IO () -> IO ThreadId
-startTimer delay action = do
-  forkIO $ do
-    threadDelay delay
-    action
-
 inServer :: EndPoint -> NodeConnsTVar -> ClientConnsTVar -> MVar () -> IO ()
 inServer endpoint nodes clients serverDone = go
   where
@@ -164,26 +143,9 @@ inServer endpoint nodes clients serverDone = go
           putStrLn "Echo server exiting"
           putMVar serverDone ()
 
-rightOrThrow :: Exception e => Either e b -> IO b
-rightOrThrow (Left err) = throw err
-rightOrThrow (Right x)  = return x
-
 onCtrlC :: IO a -> IO () -> IO a
 p `onCtrlC` q = catchJust isUserInterrupt p (const $ q >> p `onCtrlC` q)
   where
     isUserInterrupt :: AsyncException -> Maybe ()
     isUserInterrupt UserInterrupt = Just ()
     isUserInterrupt _             = Nothing
-
-readConfig :: String -> String -> IO Config
-readConfig file nodeName = do
-  content <- readFile file
-  let info = map parseNodeInfo $ lines content
-  let self = head $ filter (\n -> _name n == nodeName) info
-  let others = filter (\n -> _name n /= nodeName) info
-  return $ Config self others
-
-parseNodeInfo :: String -> NodeInfo
-parseNodeInfo str = NodeInfo name addr port True
-               where [name, adp] = words str
-                     [addr, port] = map T.unpack $ T.splitOn ":" $ T.pack adp
