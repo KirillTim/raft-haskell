@@ -12,19 +12,24 @@ import           Control.Lens
 
 import           Control.Monad
 
+import           Data.Aeson
 import           Data.ByteString.Char8        as BS (pack)
+import           Data.ByteString.Lazy.Char8   as LBS (unpack)
+import           Data.Functor                 ((<$>))
+import           Data.IORef
 import qualified Data.Map                     as M
 import qualified Data.Text                    as T
-
 import           System.Environment
 import           System.IO
 
+
 import           Types
 
-run :: String -> IO ()
-run port = do
-  let host = "localhost"
-  putStrLn "run"
+type NodeConnsTVar = TVar (M.Map String Connection)
+type ClientConnsTVar = TVar (M.Map ConnectionId Connection)
+
+oneMilliSecond = 1000 :: Int
+oneSecond = 1000 * oneMilliSecond
 
 main :: IO ()
 main = do
@@ -33,8 +38,8 @@ main = do
   cfg <- readConfig "nodes.cfg" name
   transport <- rightOrThrow =<< createTransport (cfg^.self.host) (cfg^.self.port) defaultTCPParameters
   selfEndpoint <- rightOrThrow =<< newEndPoint transport
-  let connections = newTVar M.empty
-  nodeConns <- newTVarIO (M.empty :: M.Map String Connection)
+  clientConns <- newTVarIO (M.empty :: M.Map ConnectionId Connection)
+  nodeConns <- newTVarIO (M.empty ::  M.Map String Connection)
   forM_ (cfg^.others) $ \n -> do
     let addr = EndPointAddress $ pack $ n^.host ++ ":" ++ n^.port ++ ":0"
     ce <- connect selfEndpoint addr ReliableOrdered defaultConnectHints
@@ -44,17 +49,83 @@ main = do
                Left err -> putStrLn $ "can't connect to " ++ (_name n)
 
   serverDone <- newEmptyMVar
-  forkIO $ inServer selfEndpoint nodeConns serverDone
+  forkIO $ inServer selfEndpoint nodeConns clientConns serverDone
 
   c <- readTVarIO nodeConns
   putStrLn $ show $ M.keys c
 
-  readMVar serverDone `onCtrlC` do
-    closeTransport transport
-    closeEndPoint selfEndpoint
+  _ <- getLine
+  --readmit serverDone `onCtrlC` do
+  closeTransport transport
+  closeEndPoint selfEndpoint
 
-inServer :: EndPoint -> TVar (M.Map String Connection) -> MVar () -> IO ()
-inServer endpoint conns  serverDone = go
+test :: Int -> IO ()
+test d = do
+  tid <- startTimer d (putStrLn "fire!")
+  killThread tid
+  threadDelay $ d*2
+  return ()
+
+outServer :: TChan MessageTo -> TChan MessageFrom -> NodeConnsTVar -> ClientConnsTVar -> IO () -- TODO: better naming ?
+outServer outChannel inChannel nodesTV clientsTV = go
+  where
+    go :: IO ()
+    go = do
+      electionTimer <- newIORef (Nothing :: Maybe ThreadId) -- TODO: custom type
+      heartbeatTimer <- newIORef (Nothing :: Maybe ThreadId)
+      forever $ do
+        msg <- atomically $ readTChan outChannel
+        putStrLn $ "outServer: " ++ show msg
+        case msg of (MessageToNode to m) -> do
+                      nodesC <- atomically $ readTVar nodesTV
+                      let x = M.lookup to nodesC
+                      case x of Just c -> do -- TODO: >>=
+                                  send c [BS.pack $ LBS.unpack $ encode m] -- rewrite
+                                  return ()
+                                Nothing -> putStrLn $ "no connection to " ++ show to
+                    (ClientCommandResponse cmd response) -> do
+                      clientC <- atomically $ readTVar clientsTV
+                      let cid =  cmd^.addr
+                      return ()
+                    StartElectionTimeout -> do
+                      restartTimer (3 * oneSecond) electionTimer $ sendElectionTimerMsg inChannel
+                      return ()
+                    StopElectionTimeout  -> do
+                      stopTimer electionTimer
+                    StartHeartbeatTimout -> do
+                      restartTimer (5 * oneSecond) heartbeatTimer $ sendHeartBeatTimerMsg inChannel
+                      return ()
+                    StopHeartbeatTimeout -> do
+                      stopTimer heartbeatTimer
+
+sendElectionTimerMsg = sendTimerMsg ElectionTimeout
+sendHeartBeatTimerMsg = sendTimerMsg HeartbeatTimeout
+
+sendTimerMsg :: MessageFrom -> TChan MessageFrom -> IO ()
+sendTimerMsg msg chan = atomically $ writeTChan chan msg
+
+stopTimer :: IORef (Maybe ThreadId) -> IO ()
+stopTimer ref = do
+  tid <- readIORef ref
+  case tid of Just id -> killThread id
+              Nothing -> return ()
+  --fmap killThread tid  WTF?!!
+
+restartTimer :: Int -> IORef (Maybe ThreadId) -> IO () -> IO ThreadId
+restartTimer delay ref action = do
+  stopTimer ref
+  new <- startTimer delay action
+  writeIORef ref $ Just new
+  return new
+
+startTimer :: Int -> IO () -> IO ThreadId
+startTimer delay action = do
+  forkIO $ do
+    threadDelay delay
+    action
+
+inServer :: EndPoint -> NodeConnsTVar -> ClientConnsTVar -> MVar () -> IO ()
+inServer endpoint nodes clients serverDone = go
   where
     go :: IO ()
     go = do
