@@ -1,5 +1,5 @@
-import           Test.Tasty
-import           Test.Tasty.HUnit
+import           Test.Tasty               (TestTree, defaultMain, testGroup)
+import           Test.Tasty.HUnit         (assertBool, assertEqual, testCase)
 
 import           Control.Lens             ((&), (.~), (^.))
 import           Control.Monad.RWS.Strict (runRWST)
