@@ -20,35 +20,39 @@ import           Control.Monad.RWS.Strict (ask, get, liftIO, tell)
 import qualified Data.Map                 as M (Map, insert, lookup)
 
 handleAppendEntries :: String -> Message -> NodeAction ()
-handleAppendEntries from (AppendEntries term leader prevIndex prevTerm newEntries leaderCommit) = do
+handleAppendEntries from (AppendEntries mTerm leader prevIndex prevTerm newEntries leaderCommit) = do
   cfg <- ask
   old <- get
   liftIO $ putStrLn $ "current: " ++ show (old^.role)
 
-  when (term < old^.currentTerm || not (logMatch (old^.eLog) prevIndex prevTerm))
+  when (mTerm < old^.currentTerm || not (logMatch (old^.eLog) prevIndex prevTerm))
     $ tell [MessageToNode from $ AppendRejected (myName cfg) (old^.currentTerm)]
 
   currentLeader .= Just leader
   eLog .= logUpdate (old^.eLog) newEntries
   commitIndex .= newCommitIndex (old^.eLog) (old^.commitIndex) leaderCommit
   lastApplied .= max (old^.commitIndex) (old^.lastApplied)
-  currentTerm .= max (old^.currentTerm) term
+  currentTerm .= max (old^.currentTerm) mTerm
   becomeFollower
   tell [MessageToNode from $ AppendSuccessfull (myName cfg) (old^.currentTerm) (old^.lastApplied)]
   --tell [RestartElectionTimeOut]
 
+handleAppendEntries _ _ = undefined
+
 handleAppendRejected :: String -> Message -> NodeAction ()
-handleAppendRejected _ (AppendRejected name term) = do
+handleAppendRejected _ (AppendRejected mName mTerm) = do
   currentT <- use currentTerm
-  if currentT < term then do
-    currentTerm .= term
+  if currentT < mTerm then do
+    currentTerm .= mTerm
     becomeFollower
   else do
     ni <- use nextIndex
-    let Just ind = M.lookup name ni
-    nextIndex .= M.insert name (ind - 1) ni
-    msg <- buildAppendEntries name
-    tell [MessageToNode name msg]
+    let Just ind = M.lookup mName ni
+    nextIndex .= M.insert mName (ind - 1) ni
+    msg <- buildAppendEntries mName
+    tell [MessageToNode mName msg]
+
+handleAppendRejected _ _ = undefined
 
 {-handleAppendSuccessfull :: String -> Message -> NodeAction ()
 handleAppendSuccessfull from (AppendSuccessfull node term lastIndex) = do
@@ -68,36 +72,42 @@ handleAppendSuccessfull from (AppendSuccessfull node term lastIndex) = do
 
 
 handleRequestVote :: String -> Message -> NodeAction ()
-handleRequestVote from (RequestVote term name lastLogIndex lastLogTerm) = do
+handleRequestVote from (RequestVote mTerm mName lastLogIndex lastLogTerm) = do
   ct <- use currentTerm
   vote <- use votedForOnThisTerm
-  log <- use eLog
-  if (term < ct || vote /= Nothing) then do
+  entries <- use eLog
+  if (mTerm < ct || vote /= Nothing) then do
     tell [MessageToNode from $ DeclineCandidate ct]
   else do
-    when (isSecondAtLeastAsUpToDate log [LogEntry lastLogIndex lastLogTerm (Remove "")]) $ do
-      votedForOnThisTerm .= Just name
+    when (isSecondAtLeastAsUpToDate entries [LogEntry lastLogIndex lastLogTerm (Remove "")]) $ do
+      votedForOnThisTerm .= Just mName
       tell [MessageToNode from $ VoteForCandidate $ ct]
       restartElectionTimeout
 
+handleRequestVote _ _ = undefined
+
 handleVoteForCandidate :: Message -> NodeAction ()
-handleVoteForCandidate (VoteForCandidate term) = do
+handleVoteForCandidate (VoteForCandidate mTerm) = do
   ct <- use currentTerm
   r <- use role
-  when (r == Candidate && term == ct) $ do
+  when (r == Candidate && mTerm == ct) $ do
     votesForMe += 1
     have <- use votesForMe
     need <- views others $ (flip div 2) . length
     when (have > need) $ do becomeLeader
 
+handleVoteForCandidate _ = undefined
+
 handleDeclineCandidate :: Message -> NodeAction ()
-handleDeclineCandidate (DeclineCandidate term) = do
+handleDeclineCandidate (DeclineCandidate mTerm) = do
   ct <- use currentTerm
   r <- use role
   when (r == Candidate) $ do
-    when (ct < term) $ do
-      currentTerm .= term
+    when (ct < mTerm) $ do
+      currentTerm .= mTerm
       becomeFollower
+
+handleDeclineCandidate _ = undefined
 
 handleElectionTimeout :: NodeAction ()
 handleElectionTimeout = becomeCandidate
@@ -110,12 +120,12 @@ handleHeartBeatTimeout = do
 
 becomeLeader :: NodeAction ()
 becomeLeader = do -- TODO: what to do with clientCmdQueue ?
-  name <- view (self.name)
+  selfName <- view (self.name)
   old <- use role
   liftIO . putStrLn $ show old ++ " -> Leader"
   votedForOnThisTerm .= Nothing
   role .= Leader
-  currentLeader .= Just name
+  currentLeader .= Just selfName
   ni <- uses eLog $ (+1) . lastIndex
   otherNames <- views others (fmap _name) -- TODO: rewrite this shit
   st <- get
@@ -157,9 +167,9 @@ broadcastHeartBeat = do
   lt <- uses eLog lastTerm
   curT <- use currentTerm
   commitI <- use commitIndex
-  name <- view (self.name)
+  selfName <- view (self.name)
   receivers <- view others
-  let msgs = broadcast receivers $ AppendEntries curT name li lt [] commitI
+  let msgs = broadcast receivers $ AppendEntries curT selfName li lt [] commitI
   mapM_ (\m -> tell [m]) msgs
 
 tryUpdateCommitIndex :: NodeAction ()
@@ -176,9 +186,9 @@ myName c = c^.self.name
 
 -- TODO: ??? fix it. LogIndex /= position in list
 logMatch :: [LogEntry] -> LogIndex -> Term -> Bool
-logMatch entries (LogIndex i) term
+logMatch entries (LogIndex i) iTerm
   | length entries < i = False
-  | otherwise      = t (entries !! i) == term
+  | otherwise      = t (entries !! i) == iTerm
                      where t = _term :: LogEntry -> Term
 
 isSecondAtLeastAsUpToDate :: [LogEntry] -> [LogEntry] -> Bool
@@ -198,7 +208,7 @@ lastTerm entries = (last entries)^.term
 
 
 logUpdate :: [LogEntry] -> [LogEntry] -> [LogEntry]
-logUpdate oldLog newLog = undefined
+logUpdate = undefined
 
 newCommitIndex :: [LogEntry] -> LogIndex -> LogIndex -> LogIndex
 newCommitIndex entries current leader
