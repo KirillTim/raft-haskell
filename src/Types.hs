@@ -53,8 +53,8 @@ makeLenses ''LogEntry
 
 data NodeInfo = NodeInfo
   { _name    :: String,
-    _address :: String,
-    _port    :: Int,
+    _host    :: String,
+    _port    :: String,
     _isAlive :: Bool
   } deriving (Show, Eq)
 
