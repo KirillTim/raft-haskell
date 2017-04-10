@@ -68,8 +68,8 @@ data Config = Config
 makeLenses ''Config
 
 data ClientCommand = ClientCommand
-  { addr :: String,
-    cmd  :: Command
+  { _addr :: String,
+    _cmd  :: Command
   } deriving (Show, Eq, Generic, Typeable)
 
 instance ToJSON ClientCommand

@@ -50,7 +50,9 @@ executable node-exe
                      , containers >= 0.5.7.1
                      , text >= 1.2.2.1
                      , lens
+                     , mtl >= 2.2.1
                      , stm >= 2.4.4.1
+                     , aeson >=1.0.2.1
                      , distributed-process >= 0.6.6
                      , network-transport >= 0.4.4.0
                      , network-transport-tcp >= 0.5.1

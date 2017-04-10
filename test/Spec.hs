@@ -8,7 +8,7 @@ import           Handlers
 import           Types
 
 testNodes :: Int -> [NodeInfo]
-testNodes n = fmap (\x -> NodeInfo ("node"++show x) "localhost" (9000+x) True) [1..n]
+testNodes n = fmap (\x -> NodeInfo ("node"++show x) "localhost" (show $ 9000+x) True) [1..n]
 
 testLogT42Len2 :: [LogEntry]
 testLogT42Len2 = [LogEntry 0 1 (Put "k" "v"), LogEntry 1 42 (Put "k1" "v1")]
